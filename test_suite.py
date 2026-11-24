@@ -18,6 +18,7 @@ from excel_normalizer import ExcelNormalizer
 from xml_parser import TaxXmlParser
 from reconciler import VatReconciler
 from excel_exporter import ReconciliationReportExporter
+from mst_lookup import MstLookupEngine, normalize_mst_code, classify_tax_status
 
 
 def _create_sample_excel(file_path: str, sheets_data: dict):
@@ -227,10 +228,79 @@ def test_reconciler_and_export():
     print(">>> PASS: Thuật toán đối chiếu và xuất báo cáo Excel đa kỳ hoạt động hoàn hảo.\n")
 
 
+def test_mst_lookup_and_directory_export():
+    print("=== 4. TEST MST DIRECTORY LOOKUP & EXCEL EXPORT ===")
+    # 1. Kiểm tra chuẩn hóa MST 10 số, 13 số, bù số 0 ở đầu
+    assert normalize_mst_code("100109106") == "0100109106"
+    assert normalize_mst_code("0100109106001") == "0100109106-001"
+    assert normalize_mst_code("0100109106-001") == "0100109106-001"
+
+    # 2. Kiểm tra trích xuất MST từ văn bản và từ file Excel bảng kê
+    txt = "0100109106, 0300588569; 0100109106-001\n0100109106"
+    extracted = MstLookupEngine.extract_msts_from_text(txt)
+    assert extracted == ["0100109106", "0300588569", "0100109106-001"]
+
+    # 3. Kiểm tra phân loại rủi ro tình trạng hoạt động
+    r_ok, _ = classify_tax_status("NNT đang hoạt động (đã được cấp GCN ĐKT)")
+    assert "An toàn" in r_ok
+    r_high1, _ = classify_tax_status("NNT không hoạt động tại địa chỉ đã đăng ký")
+    assert "RỦI RO CAO" in r_high1
+    r_high2, _ = classify_tax_status("NNT ngừng HĐ nhưng chưa hoàn thành thủ tục chấm dứt hiệu lực MST")
+    assert "RỦI RO CAO" in r_high2
+
+    # 4. Kiểm tra xuất file Excel Danh bạ MST từ kết quả mẫu
+    sample_results = [
+        {
+            "mst": "0100000001",
+            "ten_nnt": "CÔNG TY CỔ PHẦN MẪU A",
+            "ten_quoc_te": "SAMPLE A CORP",
+            "ten_viet_tat": "SAMPLE A",
+            "dia_chi": "Số 1 Đường Mẫu, Quận Cầu Giấy, Hà Nội",
+            "nguoi_dai_dien": "Nguyễn Văn A",
+            "tinh_trang": "NNT đang hoạt động",
+            "phan_loai_rui_ro": "Đang hoạt động (An toàn)",
+            "khuyen_nghi": "Đủ điều kiện trạng thái MST đang hoạt động bình thường.",
+            "nguon_du_lieu": "GDT (gdt.gov.vn)",
+            "cap_nhat_gdt": "2026-11-10",
+            "found": True,
+        },
+        {
+            "mst": "0100000002-001",
+            "ten_nnt": "CHI NHÁNH CÔNG TY MẪU B",
+            "ten_quoc_te": "",
+            "ten_viet_tat": "",
+            "dia_chi": "Số 2 Đường Mẫu, TP Hồ Chí Minh",
+            "nguoi_dai_dien": "",
+            "tinh_trang": "NNT không hoạt động tại địa chỉ đã đăng ký",
+            "phan_loai_rui_ro": "RỦI RO CAO (Bỏ địa chỉ ĐKKD)",
+            "khuyen_nghi": "Cảnh báo: NNT bỏ địa chỉ kinh doanh!",
+            "nguon_du_lieu": "GDT (gdt.gov.vn)",
+            "cap_nhat_gdt": "2026-11-16",
+            "found": True,
+        },
+    ]
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        out_path = os.path.join(tmp_dir, "DanhBa_MST_Test.xlsx")
+        MstLookupEngine.export_directory_to_excel(sample_results, out_path)
+        assert os.path.exists(out_path)
+        wb = openpyxl.load_workbook(out_path, read_only=True)
+        assert "Danh bạ Doanh nghiệp (MST)" in wb.sheetnames
+        ws = wb["Danh bạ Doanh nghiệp (MST)"]
+        rows = list(ws.iter_rows(values_only=True))
+        wb.close()
+        assert len(rows) >= 6
+        assert rows[4][1] == "0100000001"
+        assert rows[5][1] == "0100000002-001"
+
+    print(">>> PASS: Tra cứu Danh bạ Mã số thuế & Xuất Excel cảnh báo rủi ro hoạt động hoàn hảo.\n")
+
+
 if __name__ == '__main__':
     test_excel_normalizer_multi_files_and_folders()
     test_xml_parser_single_and_folder()
     test_reconciler_and_export()
+    test_mst_lookup_and_directory_export()
     print("=================================================================")
-    print(" TẤT CẢ 3 TEST CASES ĐỀU PASS 100%! HỆ THỐNG SẴN SÀNG SẢN XUẤT. ")
+    print(" TẤT CẢ 4 TEST CASES ĐỀU PASS 100%! HỆ THỐNG SẴN SÀNG SẢN XUẤT. ")
     print("=================================================================")

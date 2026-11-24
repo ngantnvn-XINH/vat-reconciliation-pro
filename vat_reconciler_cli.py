@@ -3,10 +3,12 @@
 vat_reconciler_cli.py
 ---------------------
 Giao diện dòng lệnh (CLI) tự động hóa:
-Cho phép chạy đối chiếu tự động không cần bấm GUI (hỗ trợ truyền 1 file, nhiều file ngăn cách bằng `;` hoặc cả thư mục).
-
-Cách dùng:
-    python vat_reconciler_cli.py --in-gdt <file_hoac_thu_muc> --in-nb <file_hoac_thu_muc> --out-gdt <file_hoac_thu_muc> --out-nb <file_hoac_thu_muc> --xml <file_hoac_thu_muc_xml> --out <ket_qua.xlsx>
+1. Chế độ Đối chiếu GTGT:
+   python vat_reconciler_cli.py --in-gdt <file/folder> --in-nb <file/folder> --out-gdt <file/folder> --out-nb <file/folder> --xml <file/folder_xml> --out <ket_qua.xlsx>
+2. Chế độ Tra cứu Danh bạ Mã số thuế & Tình trạng hoạt động (Cục Thuế):
+   python vat_reconciler_cli.py --mst-list "0100109106,0300588569" --mst-out DanhBa_MST.xlsx
+   hoặc:
+   python vat_reconciler_cli.py --mst-file <file_hoac_thu_muc_excel_chua_mst> --mst-out DanhBa_MST.xlsx
 """
 
 import os
@@ -16,21 +18,58 @@ from excel_normalizer import ExcelNormalizer
 from xml_parser import TaxXmlParser
 from reconciler import VatReconciler
 from excel_exporter import ReconciliationReportExporter
+from mst_lookup import MstLookupEngine
+
 
 def main():
-    parser = argparse.ArgumentParser(description="Phần mềm Đối chiếu Thuế GTGT Đa chiều (HĐĐT vs Bảng kê vs Tờ khai 01/GTGT - Hỗ trợ Nhiều File / Thư Mục)")
+    parser = argparse.ArgumentParser(description="Phần mềm Đối chiếu Thuế GTGT Đa chiều & Tra cứu Danh bạ Mã số thuế (GDT)")
     parser.add_argument('--in-gdt', help="File hoặc Thư mục Excel HĐĐT Mua vào tải từ TCT", default=None)
     parser.add_argument('--in-nb', help="File hoặc Thư mục Excel Bảng kê Mua vào nội bộ kế toán", default=None)
     parser.add_argument('--out-gdt', help="File hoặc Thư mục Excel HĐĐT Bán ra tải từ TCT", default=None)
     parser.add_argument('--out-nb', help="File hoặc Thư mục Excel Bảng kê Bán ra nội bộ kế toán", default=None)
     parser.add_argument('--xml', help="File hoặc Thư mục XML Tờ khai thuế 01/GTGT (1 kỳ, cả kỳ hoàn hoặc nhiều năm)", default=None)
     parser.add_argument('--out', help="Đường dẫn file Excel kết quả đối chiếu", default="KetQua_DoiChieu_ThueGTGT.xlsx")
+
+    parser.add_argument('--mst-list', help="Danh sách Mã số thuế cần tra cứu (ngăn cách bởi dấu phẩy hoặc khoảng trắng)", default=None)
+    parser.add_argument('--mst-file', help="File hoặc Thư mục Excel/CSV chứa cột Mã số thuế cần trích xuất và tra cứu", default=None)
+    parser.add_argument('--mst-out', help="Đường dẫn file Excel xuất Danh bạ Mã số thuế", default="DanhBa_MaSoThue_DoanhNghiep.xlsx")
     
     args = parser.parse_args()
     
     print("="*70)
-    print("PHẦN MỀM ĐỐI CHIẾU SỐ LIỆU THUẾ GTGT ĐA CHIỀU (VAT RECONCILIATION PRO)")
+    print("PHẦN MỀM ĐỐI CHIẾU THUẾ GTGT & TRA CỨU DANH BẠ MÃ SỐ THUẾ (v1.2)")
     print("="*70)
+
+    # Nếu chạy chế độ tra cứu Danh bạ Mã số thuế
+    if args.mst_list or args.mst_file:
+        msts = []
+        seen = set()
+        if args.mst_list:
+            for m in MstLookupEngine.extract_msts_from_text(args.mst_list):
+                if m not in seen:
+                    seen.add(m)
+                    msts.append(m)
+        if args.mst_file:
+            for m in MstLookupEngine.extract_msts_from_files(args.mst_file):
+                if m not in seen:
+                    seen.add(m)
+                    msts.append(m)
+
+        if not msts:
+            print("[!] Không tìm thấy Mã số thuế hợp lệ nào để tra cứu.")
+            return
+
+        print(f"[*] Bắt đầu tra cứu {len(msts):,} Mã số thuế từ dữ liệu đồng bộ Tổng cục Thuế...")
+        results = MstLookupEngine.lookup_batch(
+            msts,
+            max_workers=6,
+            progress_fn=lambda d, t, r: print(f"    [{d}/{t}] {r['mst']} -> {r['ten_nnt'] or 'Không tìm thấy'} | {r['tinh_trang']}")
+        )
+        saved_mst = MstLookupEngine.export_directory_to_excel(results, args.mst_out)
+        print(f"\n>>> ĐÃ XUẤT FILE EXCEL DANH BẠ MÃ SỐ THUẾ TẠI: {os.path.abspath(saved_mst)}")
+        if not (args.in_gdt or args.in_nb or args.out_gdt or args.out_nb or args.xml):
+            print("="*70)
+            return
     
     in_gdt_list = []
     in_nb_list = []

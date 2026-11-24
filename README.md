@@ -1,9 +1,10 @@
-# VAT Reconciliation Pro — Phần Mềm Đối Chiếu Thuế GTGT Đa Chiều (v1.1)
+# VAT Reconciliation Pro — Phần Mềm Đối Chiếu Thuế GTGT Đa Chiều & Tra Cứu Danh Bạ Mã Số Thuế (v1.2)
 
-Ứng dụng chuyên sâu độc lập hỗ trợ Kiểm toán, Thanh tra / Kiểm tra / Hoàn thuế và Kế toán doanh nghiệp tự động hóa 100% quy trình đối chiếu số liệu thuế GTGT **cho cả kỳ hoàn thuế hoặc nhiều năm liên tiếp**:
+Ứng dụng chuyên sâu độc lập hỗ trợ Kiểm toán, Thanh tra / Kiểm tra / Hoàn thuế và Kế toán doanh nghiệp tự động hóa 100% quy trình đối chiếu số liệu thuế GTGT **cho cả kỳ hoàn thuế hoặc nhiều năm liên tiếp**, tích hợp công cụ **Tra cứu hàng loạt Danh bạ Mã số thuế & Tình trạng hoạt động từ dữ liệu Tổng cục Thuế**:
 1. **Đối chiếu HĐĐT Bán ra (TCT) vs Bảng kê Bán ra (Nội bộ)** — hỗ trợ chọn 1 file, nhiều file cùng lúc hoặc chọn cả thư mục.
 2. **Đối chiếu HĐĐT Mua vào (TCT) vs Bảng kê Mua vào (Nội bộ)** — tự động quét mọi sheet trong workbook (bảng kê chia theo sheet Tháng/Quý/Năm) và tự động khử trùng lặp khi tải chồng các file HĐĐT từ TCT.
 3. **Đối chiếu Tổng hợp Hóa đơn vs Tờ khai thuế 01/GTGT (1 kỳ hoặc Cả thư mục GTGT nhiều kỳ/nhiều năm)** — tự động lọc tờ khai `01/GTGT`, chốt bản bổ sung cuối cùng của từng kỳ, cộng gộp chỉ tiêu `[23]`..`[36]` toàn giai đoạn và xuất thêm sheet **`Chi tiết Tờ khai theo Kỳ`**.
+4. **Tra cứu Danh bạ Mã số thuế & Tình trạng hoạt động Doanh nghiệp (`mst_lookup.py`)** — dán danh sách MST hoặc quét tự động toàn bộ MST từ file/thư mục Excel bảng kê, tra cứu đa luồng dữ liệu đồng bộ Tổng cục Thuế (`gdt.gov.vn`) lấy **Tên doanh nghiệp, Tình trạng hoạt động, Phân loại rủi ro (Bỏ địa chỉ ĐKKD / Ngừng hoạt động / Tạm ngừng / Đang hoạt động), Địa chỉ trụ sở, Người đại diện pháp luật** và xuất ra file Excel Danh bạ MST chuẩn đẹp.
 
 ---
 
