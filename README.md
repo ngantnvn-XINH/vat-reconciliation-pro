@@ -1,9 +1,9 @@
-# VAT Reconciliation Pro — Phần Mềm Đối Chiếu Thuế GTGT Đa Chiều
+# VAT Reconciliation Pro — Phần Mềm Đối Chiếu Thuế GTGT Đa Chiều (v1.1)
 
-Ứng dụng chuyên sâu độc lập hỗ trợ Kiểm toán, Thanh tra thuế và Kế toán doanh nghiệp tự động hóa 100% quy trình đối chiếu số liệu thuế GTGT:
-1. **Đối chiếu HĐĐT Bán ra (TCT) vs Bảng kê Bán ra (Nội bộ)**.
-2. **Đối chiếu HĐĐT Mua vào (TCT) vs Bảng kê Mua vào (Nội bộ)**.
-3. **Đối chiếu Tổng hợp Hóa đơn vs Tờ khai thuế 01/GTGT** (Kiểm tra khớp từng chỉ tiêu [23], [24], [25], [26], [29], [30], [31], [32], [33], [32a], [34], [35]).
+Ứng dụng chuyên sâu độc lập hỗ trợ Kiểm toán, Thanh tra / Kiểm tra / Hoàn thuế và Kế toán doanh nghiệp tự động hóa 100% quy trình đối chiếu số liệu thuế GTGT **cho cả kỳ hoàn thuế hoặc nhiều năm liên tiếp**:
+1. **Đối chiếu HĐĐT Bán ra (TCT) vs Bảng kê Bán ra (Nội bộ)** — hỗ trợ chọn 1 file, nhiều file cùng lúc hoặc chọn cả thư mục.
+2. **Đối chiếu HĐĐT Mua vào (TCT) vs Bảng kê Mua vào (Nội bộ)** — tự động quét mọi sheet trong workbook (bảng kê chia theo sheet Tháng/Quý/Năm) và tự động khử trùng lặp khi tải chồng các file HĐĐT từ TCT.
+3. **Đối chiếu Tổng hợp Hóa đơn vs Tờ khai thuế 01/GTGT (1 kỳ hoặc Cả thư mục GTGT nhiều kỳ/nhiều năm)** — tự động lọc tờ khai `01/GTGT`, chốt bản bổ sung cuối cùng của từng kỳ, cộng gộp chỉ tiêu `[23]`..`[36]` toàn giai đoạn và xuất thêm sheet **`Chi tiết Tờ khai theo Kỳ`**.
 
 ---
 

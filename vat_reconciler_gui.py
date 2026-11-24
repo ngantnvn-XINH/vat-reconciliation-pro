@@ -2,12 +2,14 @@
 """
 vat_reconciler_gui.py
 ---------------------
-Giao diện đồ họa máy tính để bàn (Desktop GUI - Tkinter):
-Dành riêng cho Kế toán thuế & Kiểm toán viên:
-- 5 ô chọn file trực quan bằng nút Browse (HĐĐT Mua vào TCT, Bảng kê Mua vào, HĐĐT Bán ra TCT, Bảng kê Bán ra, Tờ khai 01/GTGT XML).
+Giao diện đồ họa máy tính để bàn (Desktop GUI - Tkinter) - Phiên bản v1.1:
+Dành riêng cho Kế toán thuế, Kiểm toán viên & Đoàn Kiểm tra / Hoàn thuế:
+- 5 ô chọn dữ liệu đều hỗ trợ:
+  + [Chọn nhiều file...] (chọn 1 hoặc hàng chục file Excel/XML cùng lúc)
+  + [Chọn thư mục...] (chọn cả thư mục chứa hóa đơn nhiều tháng/quý/năm hoặc cả thư mục tờ khai XML GTGT của cả kỳ hoàn thuế / nhiều năm)
+- Tự động gộp bảng kê nhiều kỳ/nhiều sheet, tự động lọc tờ khai 01/GTGT bản bổ sung cuối cùng của từng kỳ và cộng gộp toàn giai đoạn.
 - Khung Log hiển thị tiến trình chuẩn hóa và đối chiếu thời gian thực.
 - Bảng Dashboard tóm tắt nhanh kết quả đối chiếu chỉ tiêu ngay trên màn hình.
-- Nút "Thực hiện đối chiếu" và nút "Mở file Excel kết quả" 1-click.
 """
 
 import os
@@ -15,21 +17,21 @@ import sys
 import threading
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
-import openpyxl
 
-from excel_normalizer import ExcelNormalizer
+from excel_normalizer import ExcelNormalizer, resolve_input_paths, SUPPORTED_TABULAR_EXTS
 from xml_parser import TaxXmlParser
 from reconciler import VatReconciler
 from excel_exporter import ReconciliationReportExporter
 
+
 class VatReconcilerApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Phần mềm Đối chiếu Thuế GTGT Đa chiều - VAT Reconciliation Pro v1.0")
-        self.root.geometry("980x750")
-        self.root.minsize(850, 650)
+        self.root.title("Phần mềm Đối chiếu Thuế GTGT Đa chiều (Hỗ trợ Nhiều Kỳ Hoàn / Nhiều Năm) - VAT Reconciliation Pro v1.1")
+        self.root.geometry("1080x780")
+        self.root.minsize(920, 680)
         
-        # Biến lưu đường dẫn file
+        # Biến lưu đường dẫn file / danh sách file / thư mục (ngăn cách bởi ;)
         self.var_in_gdt = tk.StringVar()
         self.var_in_nb = tk.StringVar()
         self.var_out_gdt = tk.StringVar()
@@ -43,13 +45,13 @@ class VatReconcilerApp:
         
     def create_widgets(self):
         # 1. Header Frame
-        header_frame = tk.Frame(self.root, bg="#1F4E79", height=60)
+        header_frame = tk.Frame(self.root, bg="#1F4E79", height=64)
         header_frame.pack(fill=tk.X)
         
         lbl_title = tk.Label(
             header_frame, 
-            text="HỆ THỐNG ĐỐI CHIẾU HÓA ĐƠN ĐIỆN TỬ, BẢNG KÊ & TỜ KHAI THUẾ GTGT", 
-            font=("Segoe UI", 13, "bold"), 
+            text="HỆ THỐNG ĐỐI CHIẾU HÓA ĐƠN ĐIỆN TỬ, BẢNG KÊ & TỜ KHAI THUẾ GTGT (ĐA KỲ / CẢ KỲ HOÀN / NHIỀU NĂM)", 
+            font=("Segoe UI", 12, "bold"), 
             fg="white", 
             bg="#1F4E79"
         )
@@ -57,44 +59,91 @@ class VatReconcilerApp:
         
         lbl_sub = tk.Label(
             header_frame, 
-            text="Tự động chuẩn hóa mọi định dạng Excel - So khớp HĐĐT TCT vs Nội bộ - Kiểm tra khớp 100% Tờ khai 01/GTGT", 
+            text="Hỗ trợ chọn 1 file, nhiều file cùng lúc hoặc cả thư mục — Tự động gộp bảng kê nhiều kỳ & chốt tờ khai 01/GTGT bản bổ sung cuối cùng mỗi kỳ", 
             font=("Segoe UI", 9, "italic"), 
             fg="#D9E1F2", 
             bg="#1F4E79"
         )
         lbl_sub.pack(pady=(0, 10))
         
-        # 2. Main Content Notebook / Frames
+        # 2. Main Content Frame
         main_frame = tk.Frame(self.root, padx=15, pady=10)
         main_frame.pack(fill=tk.BOTH, expand=True)
         
         # --- Group 1: Chọn dữ liệu đầu vào ---
-        grp_input = tk.LabelFrame(main_frame, text="  1. Chọn hồ sơ & file dữ liệu (Excel / XML)  ", font=("Segoe UI", 10, "bold"), fg="#1F4E79", padx=10, pady=8)
+        grp_input = tk.LabelFrame(
+            main_frame,
+            text="  1. Chọn hồ sơ & dữ liệu (Chọn 1 file, Nhiều file hoặc Cả thư mục GTGT theo kỳ hoàn / nhiều năm)  ",
+            font=("Segoe UI", 10, "bold"),
+            fg="#1F4E79",
+            padx=10,
+            pady=8
+        )
         grp_input.pack(fill=tk.X, pady=(0, 10))
         
-        def add_file_row(parent, row, label_text, var_holder, file_types):
+        def add_multi_source_row(parent, row, label_text, var_holder, file_types):
             lbl = tk.Label(parent, text=label_text, width=28, anchor="w", font=("Segoe UI", 9))
             lbl.grid(row=row, column=0, sticky="w", pady=3)
             
             entry = tk.Entry(parent, textvariable=var_holder, font=("Segoe UI", 9))
             entry.grid(row=row, column=1, sticky="ew", padx=5, pady=3)
             
-            def browse():
-                fn = filedialog.askopenfilename(filetypes=file_types)
-                if fn:
-                    var_holder.set(os.path.normpath(fn))
-            btn = tk.Button(parent, text="Chọn file...", command=browse, width=10, bg="#E1EBF5", font=("Segoe UI", 8))
-            btn.grid(row=row, column=2, padx=2, pady=3)
+            def browse_files():
+                fns = filedialog.askopenfilenames(
+                    title=f"Chọn 1 hoặc nhiều file cho: {label_text}",
+                    filetypes=file_types
+                )
+                if fns:
+                    norm_paths = [os.path.normpath(f) for f in fns]
+                    cur = var_holder.get().strip()
+                    if cur:
+                        combined = cur + "; " + "; ".join(norm_paths)
+                    else:
+                        combined = "; ".join(norm_paths)
+                    var_holder.set(combined)
+
+            def browse_folder():
+                folder = filedialog.askdirectory(
+                    title=f"Chọn thư mục chứa dữ liệu cho: {label_text}"
+                )
+                if folder:
+                    norm_folder = os.path.normpath(folder)
+                    cur = var_holder.get().strip()
+                    if cur:
+                        var_holder.set(cur + "; " + norm_folder)
+                    else:
+                        var_holder.set(norm_folder)
+
+            def clear_val():
+                var_holder.set("")
+
+            btn_files = tk.Button(
+                parent, text="Chọn (nhiều) file...", command=browse_files,
+                width=15, bg="#E1EBF5", font=("Segoe UI", 8)
+            )
+            btn_files.grid(row=row, column=2, padx=2, pady=3)
+
+            btn_dir = tk.Button(
+                parent, text="Chọn cả thư mục...", command=browse_folder,
+                width=15, bg="#D9E1F2", font=("Segoe UI", 8, "bold"), fg="#1F4E79"
+            )
+            btn_dir.grid(row=row, column=3, padx=2, pady=3)
+
+            btn_clr = tk.Button(
+                parent, text="Xóa", command=clear_val,
+                width=5, bg="#F2F2F2", font=("Segoe UI", 8)
+            )
+            btn_clr.grid(row=row, column=4, padx=(2, 0), pady=3)
             
         grp_input.columnconfigure(1, weight=1)
-        excel_types = [("Excel Files", "*.xlsx *.xls"), ("All Files", "*.*")]
-        xml_types = [("XML Files", "*.xml"), ("All Files", "*.*")]
+        excel_types = [("Excel / CSV Files", "*.xlsx *.xls *.csv"), ("All Files", "*.*")]
+        xml_types = [("XML Tờ khai 01/GTGT", "*.xml"), ("All Files", "*.*")]
         
-        add_file_row(grp_input, 0, "HĐĐT Mua vào (Tải từ TCT):", self.var_in_gdt, excel_types)
-        add_file_row(grp_input, 1, "Bảng kê Mua vào (Nội bộ):", self.var_in_nb, excel_types)
-        add_file_row(grp_input, 2, "HĐĐT Bán ra (Tải từ TCT):", self.var_out_gdt, excel_types)
-        add_file_row(grp_input, 3, "Bảng kê Bán ra (Nội bộ):", self.var_out_nb, excel_types)
-        add_file_row(grp_input, 4, "Tờ khai thuế 01/GTGT (XML):", self.var_xml_return, xml_types)
+        add_multi_source_row(grp_input, 0, "HĐĐT Mua vào (Tải từ TCT):", self.var_in_gdt, excel_types)
+        add_multi_source_row(grp_input, 1, "Bảng kê Mua vào (Nội bộ):", self.var_in_nb, excel_types)
+        add_multi_source_row(grp_input, 2, "HĐĐT Bán ra (Tải từ TCT):", self.var_out_gdt, excel_types)
+        add_multi_source_row(grp_input, 3, "Bảng kê Bán ra (Nội bộ):", self.var_out_nb, excel_types)
+        add_multi_source_row(grp_input, 4, "Tờ khai thuế 01/GTGT (XML):", self.var_xml_return, xml_types)
         
         # --- Output file row ---
         lbl_out = tk.Label(grp_input, text="Nơi lưu file Excel kết quả:", width=28, anchor="w", font=("Segoe UI", 9, "bold"))
@@ -105,7 +154,7 @@ class VatReconcilerApp:
             fn = filedialog.asksaveasfilename(defaultextension=".xlsx", filetypes=[("Excel Files", "*.xlsx")])
             if fn:
                 self.var_out_file.set(os.path.normpath(fn))
-        btn_out = tk.Button(grp_input, text="Đổi vị trí...", command=browse_out, width=10, bg="#E1EBF5", font=("Segoe UI", 8))
+        btn_out = tk.Button(grp_input, text="Đổi vị trí lưu...", command=browse_out, width=15, bg="#E1EBF5", font=("Segoe UI", 8))
         btn_out.grid(row=5, column=2, padx=2, pady=(8, 3))
         
         # --- Action Buttons ---
@@ -142,7 +191,12 @@ class VatReconcilerApp:
         paned.pack(fill=tk.BOTH, expand=True)
         
         # Frame Treeview tóm tắt tờ khai
-        tree_frame = tk.LabelFrame(paned, text="  2. Bảng đối chiếu nhanh các chỉ tiêu Tờ khai GTGT (01/GTGT)  ", font=("Segoe UI", 10, "bold"), fg="#1F4E79")
+        tree_frame = tk.LabelFrame(
+            paned,
+            text="  2. Bảng đối chiếu nhanh các chỉ tiêu Tờ khai GTGT (01/GTGT - 1 kỳ hoặc Tổng hợp cả kỳ hoàn / nhiều năm)  ",
+            font=("Segoe UI", 10, "bold"),
+            fg="#1F4E79"
+        )
         paned.add(tree_frame, weight=3)
         
         cols = ("ma_ct", "ten_ct", "so_hd", "so_tk", "chenh_lech", "danh_gia")
@@ -150,16 +204,16 @@ class VatReconcilerApp:
         self.tree.heading("ma_ct", text="Chỉ tiêu")
         self.tree.heading("ten_ct", text="Tên chỉ tiêu tờ khai 01/GTGT")
         self.tree.heading("so_hd", text="Số HĐ / Bảng kê")
-        self.tree.heading("so_tk", text="Số trên Tờ khai")
+        self.tree.heading("so_tk", text="Số trên Tờ khai (Tổng kỳ)")
         self.tree.heading("chenh_lech", text="Chênh lệch")
         self.tree.heading("danh_gia", text="Trạng thái khớp")
         
         self.tree.column("ma_ct", width=70, anchor="center")
-        self.tree.column("ten_ct", width=280, anchor="w")
-        self.tree.column("so_hd", width=120, anchor="e")
-        self.tree.column("so_tk", width=120, anchor="e")
-        self.tree.column("chenh_lech", width=120, anchor="e")
-        self.tree.column("danh_gia", width=140, anchor="center")
+        self.tree.column("ten_ct", width=300, anchor="w")
+        self.tree.column("so_hd", width=135, anchor="e")
+        self.tree.column("so_tk", width=135, anchor="e")
+        self.tree.column("chenh_lech", width=135, anchor="e")
+        self.tree.column("danh_gia", width=150, anchor="center")
         
         tree_scroll = ttk.Scrollbar(tree_frame, orient=tk.VERTICAL, command=self.tree.yview)
         self.tree.configure(yscrollcommand=tree_scroll.set)
@@ -189,7 +243,7 @@ class VatReconcilerApp:
         xml_ret = self.var_xml_return.get().strip()
         
         if not (in_gdt or in_nb or out_gdt or out_nb or xml_ret):
-            messagebox.showwarning("Chưa chọn file", "Vui lòng chọn ít nhất 1 file hóa đơn/bảng kê hoặc tờ khai XML để đối chiếu!")
+            messagebox.showwarning("Chưa chọn dữ liệu", "Vui lòng chọn ít nhất 1 file/thư mục hóa đơn, bảng kê hoặc tờ khai XML để đối chiếu!")
             return
             
         self.btn_run.config(state=tk.DISABLED)
@@ -207,28 +261,33 @@ class VatReconcilerApp:
             out_gdt_list, out_nb_list = [], []
             
             in_gdt = self.var_in_gdt.get().strip()
-            if in_gdt and os.path.exists(in_gdt):
-                self.log(f"-> Đang chuẩn hóa HĐĐT Mua vào TCT: {os.path.basename(in_gdt)}...")
-                in_gdt_list = ExcelNormalizer.normalize_invoice_sheet(in_gdt)
-                self.log(f"   + Nhận diện & chuẩn hóa thành công: {len(in_gdt_list):,} hóa đơn.")
+            if in_gdt:
+                files = resolve_input_paths(in_gdt, SUPPORTED_TABULAR_EXTS)
+                self.log(f"-> Đang chuẩn hóa HĐĐT Mua vào TCT ({len(files)} file)...")
+                in_gdt_list = ExcelNormalizer.normalize_multiple_sources(in_gdt, deduplicate=True, log_fn=self.log)
+                self.log(f"   => Tổng cộng HĐĐT Mua vào TCT sau chuẩn hóa: {len(in_gdt_list):,} dòng hóa đơn.")
                 
             in_nb = self.var_in_nb.get().strip()
-            if in_nb and os.path.exists(in_nb):
-                self.log(f"-> Đang chuẩn hóa Bảng kê Mua vào Nội bộ: {os.path.basename(in_nb)}...")
-                in_nb_list = ExcelNormalizer.normalize_invoice_sheet(in_nb)
-                self.log(f"   + Nhận diện & chuẩn hóa thành công: {len(in_nb_list):,} hóa đơn.")
+            if in_nb:
+                files = resolve_input_paths(in_nb, SUPPORTED_TABULAR_EXTS)
+                self.log(f"-> Đang chuẩn hóa Bảng kê Mua vào Nội bộ ({len(files)} file)...")
+                # Bảng kê nội bộ giữ nguyên toàn bộ các dòng kế toán đã kê khai (không tự ý xóa trùng)
+                in_nb_list = ExcelNormalizer.normalize_multiple_sources(in_nb, deduplicate=False, log_fn=self.log)
+                self.log(f"   => Tổng cộng Bảng kê Mua vào Nội bộ: {len(in_nb_list):,} dòng hóa đơn.")
                 
             out_gdt = self.var_out_gdt.get().strip()
-            if out_gdt and os.path.exists(out_gdt):
-                self.log(f"-> Đang chuẩn hóa HĐĐT Bán ra TCT: {os.path.basename(out_gdt)}...")
-                out_gdt_list = ExcelNormalizer.normalize_invoice_sheet(out_gdt)
-                self.log(f"   + Nhận diện & chuẩn hóa thành công: {len(out_gdt_list):,} hóa đơn.")
+            if out_gdt:
+                files = resolve_input_paths(out_gdt, SUPPORTED_TABULAR_EXTS)
+                self.log(f"-> Đang chuẩn hóa HĐĐT Bán ra TCT ({len(files)} file)...")
+                out_gdt_list = ExcelNormalizer.normalize_multiple_sources(out_gdt, deduplicate=True, log_fn=self.log)
+                self.log(f"   => Tổng cộng HĐĐT Bán ra TCT sau chuẩn hóa: {len(out_gdt_list):,} dòng hóa đơn.")
                 
             out_nb = self.var_out_nb.get().strip()
-            if out_nb and os.path.exists(out_nb):
-                self.log(f"-> Đang chuẩn hóa Bảng kê Bán ra Nội bộ: {os.path.basename(out_nb)}...")
-                out_nb_list = ExcelNormalizer.normalize_invoice_sheet(out_nb)
-                self.log(f"   + Nhận diện & chuẩn hóa thành công: {len(out_nb_list):,} hóa đơn.")
+            if out_nb:
+                files = resolve_input_paths(out_nb, SUPPORTED_TABULAR_EXTS)
+                self.log(f"-> Đang chuẩn hóa Bảng kê Bán ra Nội bộ ({len(files)} file)...")
+                out_nb_list = ExcelNormalizer.normalize_multiple_sources(out_nb, deduplicate=False, log_fn=self.log)
+                self.log(f"   => Tổng cộng Bảng kê Bán ra Nội bộ: {len(out_nb_list):,} dòng hóa đơn.")
                 
             in_rec = None
             if in_gdt_list or in_nb_list:
@@ -252,28 +311,30 @@ class VatReconcilerApp:
                 
             ret_rec = None
             xml_ret = self.var_xml_return.get().strip()
-            if xml_ret and os.path.exists(xml_ret):
-                self.log(f"[*] Phân tích Tờ khai thuế GTGT XML: {os.path.basename(xml_ret)}...")
-                vat_ret = TaxXmlParser.parse_vat_return(xml_ret)
-                self.log(f"   + NNT: {vat_ret['ten_nnt']} | MST: {vat_ret['ma_so_thue']} | Kỳ: {vat_ret['ky_tinh_thue']}")
-                
-                final_in = in_nb_list if in_nb_list else in_gdt_list
-                final_out = out_nb_list if out_nb_list else out_gdt_list
-                
-                ret_rec = VatReconciler.reconcile_with_vat_return(final_in, final_out, vat_ret)
-                
-                # Cập nhật lên Treeview
-                for comp in ret_rec['comparisons']:
-                    diff_val = comp['chenh_lech']
-                    diff_str = f"{diff_val:+,.0f}" if diff_val != 0 else "0"
-                    self.tree.insert("", tk.END, values=(
-                        comp['chi_tieu_ma'],
-                        comp['ten_chi_tieu'],
-                        f"{comp['so_hoa_don']:,.0f}",
-                        f"{comp['so_to_khai']:,.0f}",
-                        diff_str,
-                        comp['danh_gia']
-                    ))
+            if xml_ret:
+                self.log(f"[*] Phân tích hồ sơ Tờ khai thuế 01/GTGT (XML)...")
+                vat_ret = TaxXmlParser.parse_multiple_vat_returns(xml_ret, log_fn=self.log)
+                if vat_ret:
+                    self.log(f"   + NNT: {vat_ret['ten_nnt']} | MST: {vat_ret['ma_so_thue']} | Kỳ/Giai đoạn: {vat_ret['ky_tinh_thue']}")
+                    
+                    final_in = in_nb_list if in_nb_list else in_gdt_list
+                    final_out = out_nb_list if out_nb_list else out_gdt_list
+                    
+                    ret_rec = VatReconciler.reconcile_with_vat_return(final_in, final_out, vat_ret)
+                    
+                    for comp in ret_rec['comparisons']:
+                        diff_val = comp['chenh_lech']
+                        diff_str = f"{diff_val:+,.0f}" if diff_val != 0 else "0"
+                        self.tree.insert("", tk.END, values=(
+                            comp['chi_tieu_ma'],
+                            comp['ten_chi_tieu'],
+                            f"{comp['so_hoa_don']:,.0f}",
+                            f"{comp['so_to_khai']:,.0f}",
+                            diff_str,
+                            comp['danh_gia']
+                        ))
+                else:
+                    self.log("   [!] Không tìm thấy tờ khai XML 01/GTGT hợp lệ nào trong đường dẫn đã chọn.")
                     
             out_path = self.var_out_file.get().strip()
             self.log(f"[*] Xuất báo cáo Excel chuyên sâu ra: {out_path}...")
@@ -297,10 +358,12 @@ class VatReconcilerApp:
         else:
             messagebox.showwarning("Chưa có file", "Chưa có file báo cáo kết quả để mở!")
 
+
 def main():
     root = tk.Tk()
     app = VatReconcilerApp(root)
     root.mainloop()
+
 
 if __name__ == '__main__':
     main()
